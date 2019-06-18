@@ -1,0 +1,22 @@
+version: 2
+jobs:
+ build:
+   machine: true
+   steps:
+     - checkout
+     - run:
+        name: Build Buster Builder Docker Image
+        command: scripts/build-upload-docker-image -d base/buster-builder -t buster-builder
+     - run:
+         name: Docker Image Summary
+         command: docker image list
+
+workflows:
+  version: 2
+  build-and-upload:
+    jobs:
+      - build:
+          filters:
+            tags:
+              only: /^release-[0-9]+(\.[0-9]+)+(\.[0-9]+)/
+

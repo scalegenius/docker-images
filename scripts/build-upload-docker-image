@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# Build and upload docker iamges to docker hub
+
+DOCKER_BIN="/usr/bin/docker"
+
+DOCKER_PROJECT=${DOCKER_PROJECT:-scalegenius/buildbox}
+DOCKER_HUB_USER=${DOCKER_HUB_USER:-sgdeploy}
+
+###############################################################################
+
+# Check for required binaries
+for req_bin in $DOCKER_BIN; do
+  if [ ! -x "$req_bin" ]; then echo "Can't execute ${req_bin}! Aborting.." >&2; exit 1; fi
+done
+
+# Infer docker directory when executed within git repo
+GIT_BIN=${GIT_BIN:-`which git`}
+DOCKER_DIR="$(readlink -m `cd "$(dirname "${BASH_SOURCE[0]}")" && pwd`/../)"
+if [ -x $GIT_BIN ]; then GIT_ROOT=`$GIT_BIN rev-parse --show-toplevel 2>/dev/null`
+  if [ "${GIT_ROOT}" != "" ]; then DOCKER_DIR=$GIT_ROOT; fi
+fi
+cd ${DOCKER_DIR}
+
+# Print our usage line
+usage="Usage: `basename $0` -d <directory> -t <docker_tag> -p [docker/project]\n\n
+\t-d  Docker Directory\n
+\t-p  Docker Project Name\n
+\t-t  Docker Tag\n"
+
+# Check some parameters
+while getopts "d:p:t:" options; do
+  case $options in
+    d ) docker_dir="$OPTARG";;
+    p ) DOCKER_PROJECT="$OPTARG";;
+    t ) docker_tag="$OPTARG";;
+    * ) echo -e $usage; exit 1;;
+  esac
+done
+
+if [ $# -lt 4 ]; then echo -e $usage; exit 1; fi
+
+# Check for a Dockerfile and Tag
+if [ ! -e ${docker_dir}/Dockerfile ]; then echo "Cannot find ${docker_dir}/Dockerfile!"; exit 1; fi
+if [ "${docker_tag}x" == "x" ]; then echo "Docker Tag required!"; exit 1; fi
+
+# Check for Docker HUB env from CircleCI
+if [ -z "${DOCKER_HUB_USER}" ] || [ -z "${DOCKER_HUB_PASS}" ]; then
+  echo "Required environment variables DOCKER_HUB_USER / DOCKER_HUB_PASS missing!"; exit 1
+fi
+
+# Login to DockerHub
+echo "  ###################### Logging into DockerHub  ########################"
+echo "${DOCKER_HUB_PASS}" |$DOCKER_BIN login --username $DOCKER_HUB_USER --password-stdin
+if [ $? -ne 0 ]; then echo "Login failed!"; exit 1; fi
+
+# Build docker image
+echo "  ################ Building Docker Image ${docker_tag}  #################"
+cd ${docker_dir}; $DOCKER_BIN build -t ${DOCKER_PROJECT}:${docker_tag} .
+if [ $? -ne 0 ]; then echo "Build failed!"; exit 1; fi
+
+# Push docker image to DockerHub (only on release)
+if [[ "${CIRCLE_TAG}" =~ ^[Rr][Ee][Ll][Ee][Aa][Ss][Ee]-[0-9]+(\.[0-9]+)+$ ]]; then
+  echo "  ################ Pushing ${docker_tag} to DockerHub ###################"
+  $DOCKER_BIN push ${DOCKER_PROJECT}:${docker_tag}
+fi
+
+# Logout of DockerHub
+echo "  ##################### Logging out of DockerHub  #######################"
+$DOCKER_BIN logout
