@@ -63,6 +63,8 @@ if [ $? -ne 0 ]; then echo "Build failed!"; exit 1; fi
 if [[ "${CIRCLE_TAG}" =~ ^[Rr][Ee][Ll][Ee][Aa][Ss][Ee]-[0-9]+(\.[0-9]+)+$ ]]; then
   echo "  ################ Pushing ${docker_tag} to DockerHub ###################"
   $DOCKER_BIN push ${DOCKER_PROJECT}:${docker_tag}
+else
+  echo "  ####### Non-Release skipping push of ${docker_tag} to DockerHub #######"
 fi
 
 # Logout of DockerHub
